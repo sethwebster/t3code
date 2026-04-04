@@ -8,13 +8,16 @@
  */
 import {
   ChatAttachment,
-  OrchestrationMessageRole,
   MessageId,
+  NonNegativeInt,
+  OrchestrationMessageRole,
+  PositiveInt,
   ThreadId,
   TurnId,
   IsoDateTime,
 } from "@t3tools/contracts";
 import { Schema, ServiceMap } from "effect";
+import type { Option } from "effect";
 import type { Effect } from "effect";
 
 import type { ProjectionRepositoryError } from "../Errors.ts";
@@ -37,6 +40,25 @@ export const ListProjectionThreadMessagesInput = Schema.Struct({
 });
 export type ListProjectionThreadMessagesInput = typeof ListProjectionThreadMessagesInput.Type;
 
+export const GetProjectionThreadMessageInput = Schema.Struct({
+  messageId: MessageId,
+});
+export type GetProjectionThreadMessageInput = typeof GetProjectionThreadMessageInput.Type;
+
+export const ListProjectionThreadMessagesPageInput = Schema.Struct({
+  threadId: ThreadId,
+  offset: NonNegativeInt,
+  limit: PositiveInt,
+});
+export type ListProjectionThreadMessagesPageInput =
+  typeof ListProjectionThreadMessagesPageInput.Type;
+
+export const ProjectionThreadMessagePage = Schema.Struct({
+  messages: Schema.Array(ProjectionThreadMessage),
+  total: NonNegativeInt,
+});
+export type ProjectionThreadMessagePage = typeof ProjectionThreadMessagePage.Type;
+
 export const DeleteProjectionThreadMessagesInput = Schema.Struct({
   threadId: ThreadId,
 });
@@ -56,6 +78,13 @@ export interface ProjectionThreadMessageRepositoryShape {
   ) => Effect.Effect<void, ProjectionRepositoryError>;
 
   /**
+   * Read a projected thread message by id.
+   */
+  readonly getByMessageId: (
+    input: GetProjectionThreadMessageInput,
+  ) => Effect.Effect<Option.Option<ProjectionThreadMessage>, ProjectionRepositoryError>;
+
+  /**
    * List projected thread messages for a thread.
    *
    * Returned in ascending creation order.
@@ -63,6 +92,13 @@ export interface ProjectionThreadMessageRepositoryShape {
   readonly listByThreadId: (
     input: ListProjectionThreadMessagesInput,
   ) => Effect.Effect<ReadonlyArray<ProjectionThreadMessage>, ProjectionRepositoryError>;
+
+  /**
+   * List projected thread messages newest-first using offset pagination.
+   */
+  readonly listPageNewestFirst: (
+    input: ListProjectionThreadMessagesPageInput,
+  ) => Effect.Effect<ProjectionThreadMessagePage, ProjectionRepositoryError>;
 
   /**
    * Delete projected thread messages by thread.
