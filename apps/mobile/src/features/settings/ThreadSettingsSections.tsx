@@ -174,6 +174,8 @@ export function WorkingSectionSettings() {
   const preferences = useAtomValue(mobilePreferencesAtom);
   const workingShelfEnabled =
     AsyncResult.isSuccess(preferences) && preferences.value.workingShelfEnabled !== false;
+  const inboxSectionsEnabled =
+    AsyncResult.isSuccess(preferences) && preferences.value.inboxSectionsEnabled === true;
 
   return (
     <View className="gap-3">
@@ -184,11 +186,18 @@ export function WorkingSectionSettings() {
           value={workingShelfEnabled}
           onValueChange={(value) => savePreferences({ workingShelfEnabled: value })}
         />
+        <SettingsSwitchRow
+          icon="bell.badge"
+          label="Needs you section"
+          value={inboxSectionsEnabled}
+          onValueChange={(value) => savePreferences({ inboxSectionsEnabled: value })}
+        />
       </SettingsSection>
       <Text className="px-2 text-sm text-foreground-muted">
-        Fold working and monitoring threads into a Working section. They return to the top of the
-        list when they need you. While this is on, active threads are ordered by time and cannot be
-        moved.
+        Working section folds working and monitoring threads away. They return to the top of the
+        list when they need you. Needs you section splits the list into threads waiting on an answer
+        or finished and unread, then threads you have already seen. While either is on, active
+        threads are ordered by time and cannot be moved.
       </Text>
     </View>
   );

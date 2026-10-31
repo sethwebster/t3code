@@ -6,6 +6,8 @@ import {
   isThreadWorking,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
+  splitInboxThreads,
+  threadNeedsYou,
 } from "./threadInbox.ts";
 
 const environmentId = EnvironmentId.make("environment-1");
@@ -239,5 +241,58 @@ describe("sortWorkingThreadsBySend", () => {
     expect(
       sortWorkingThreadsBySend([launched, sentFirst, sentLast]).map((thread) => thread.id),
     ).toEqual(["sent-last", "sent-first", "launched"]);
+  });
+});
+
+describe("threadNeedsYou", () => {
+  const finished = (lastVisitedAt?: string | null) => ({
+    ...thread("finished", false),
+    ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
+    latestRun: {
+      runId: RunId.make("run:1"),
+      status: "completed" as const,
+      requestedAt: "2026-06-01T01:00:00.000Z",
+      startedAt: "2026-06-01T01:00:00.000Z",
+      completedAt: "2026-06-01T02:00:00.000Z",
+      assistantMessageId: null,
+    },
+  });
+
+  it("holds a finish until the user opens it, including threads never opened", () => {
+    expect(threadNeedsYou(finished("2026-06-01T01:30:00.000Z"))).toBe(true);
+    expect(threadNeedsYou(finished(null))).toBe(true);
+    expect(threadNeedsYou(finished("2026-06-01T02:30:00.000Z"))).toBe(false);
+    // Servers without visit tracking cannot say what is unseen.
+    expect(threadNeedsYou(finished())).toBe(false);
+  });
+
+  it("holds requests regardless of visits, and a ready plan once its run ends", () => {
+    const seen = finished("2026-06-01T02:30:00.000Z");
+    expect(threadNeedsYou({ ...seen, hasPendingApprovals: true })).toBe(true);
+    expect(threadNeedsYou({ ...seen, hasPendingUserInput: true })).toBe(true);
+    expect(threadNeedsYou({ ...seen, pendingGuestMessageCount: 1 })).toBe(true);
+    expect(
+      threadNeedsYou({ ...seen, interactionMode: "plan", hasActionableProposedPlan: true }),
+    ).toBe(true);
+    expect(
+      threadNeedsYou({
+        ...seen,
+        interactionMode: "plan",
+        hasActionableProposedPlan: true,
+        latestRun: { ...seen.latestRun, completedAt: null },
+      }),
+    ).toBe(false);
+  });
+
+  it("splits in order and keeps a frozen row in the group it had when opened", () => {
+    const unseen = { ...finished(null), id: ThreadId.make("unseen") };
+    const seen = { ...finished("2026-06-01T02:30:00.000Z"), id: ThreadId.make("seen") };
+    const reading = { ...finished("2026-06-01T02:30:00.000Z"), id: ThreadId.make("reading") };
+    const watching = { ...finished(null), id: ThreadId.make("watching") };
+    const split = splitInboxThreads([seen, unseen, reading, watching], (row) =>
+      row.id === "reading" ? true : row.id === "watching" ? false : undefined,
+    );
+    expect(split.needsYou.map((row) => row.id)).toEqual(["unseen", "reading"]);
+    expect(split.open.map((row) => row.id)).toEqual(["seen", "watching"]);
   });
 });

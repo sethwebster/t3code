@@ -59,6 +59,7 @@ import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
+  ThreadListV2SectionDivider,
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
@@ -420,6 +421,8 @@ export function HomeScreen(props: HomeScreenProps) {
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,
+    inboxSectionsEnabled,
+    activeTimeOrdered,
     workingShelfExpanded,
     toggleSettledShelf,
     toggleSnoozedShelf,
@@ -463,6 +466,7 @@ export function HomeScreen(props: HomeScreenProps) {
     pendingOrder,
     shelfPreferencesLoaded,
     workingShelfEnabled,
+    inboxSectionsEnabled,
     workingShelfExpanded,
     snoozedShelfExpanded,
     settledShelfExpanded,
@@ -523,6 +527,13 @@ export function HomeScreen(props: HomeScreenProps) {
           onSwipeableWillOpen={handleSwipeableWillOpen}
           simultaneousSwipeGesture={homeScrollGesture}
           activationKey={item.key}
+        />
+      );
+    }
+    if (item.type === "v2-inbox-label") {
+      return (
+        <ThreadListV2SectionDivider
+          label={`${item.key === "v2-needs-you" ? "Needs you" : "Open"} (${item.count})`}
         />
       );
     }
@@ -609,7 +620,7 @@ export function HomeScreen(props: HomeScreenProps) {
         reorderSupported={
           item.item.pinned
             ? pinReorderEnvironmentIds.has(thread.environmentId)
-            : !workingShelfEnabled && activeReorderEnvironmentIds.has(thread.environmentId)
+            : !activeTimeOrdered && activeReorderEnvironmentIds.has(thread.environmentId)
         }
         canMoveUp={item.canMoveUp}
         canMoveDown={item.canMoveDown}
@@ -639,7 +650,7 @@ export function HomeScreen(props: HomeScreenProps) {
     searchQuery: props.searchQuery,
     selectedThreadKey,
     threadSearchMatchByKey,
-    workingShelfEnabled,
+    activeTimeOrdered,
   };
 
   const hasAnyThreads =

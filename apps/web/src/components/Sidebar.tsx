@@ -32,6 +32,8 @@ import {
 import {
   createInboxReturnTracker,
   isThreadWorking,
+  splitInboxThreads,
+  threadNeedsYou,
 } from "@t3tools/client-runtime/state/thread-inbox";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
@@ -259,6 +261,7 @@ import {
 } from "./sidebar/SidebarProjectFolderHeader";
 import {
   SidebarDragBoundary,
+  SidebarInboxLabel,
   SidebarSectionHeader,
   SidebarSectionPlaceholder,
 } from "./sidebar/SidebarListMarkers";
@@ -334,6 +337,9 @@ type SidebarOptimisticDrop = {
   readonly assignedKeys: ReadonlyMap<string, string>;
 };
 
+/** The routed row and whether it needed the user when opened. */
+type SidebarOpenedRow = { readonly key: string | null; readonly needsYou: boolean };
+
 interface SidebarThreadPartitionInput {
   readonly threads: readonly EnvironmentThreadShell[];
   readonly scopedProjectKeys: ReadonlySet<string> | null;
@@ -345,6 +351,8 @@ interface SidebarThreadPartitionInput {
   readonly workingShelfEnabled: boolean;
   /** Boring mode: folders list active threads by the user's latest message. */
   readonly sortActiveBySend: boolean;
+  readonly inboxSectionsEnabled: boolean;
+  readonly openedRow: SidebarOpenedRow;
   // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
@@ -366,9 +374,9 @@ function resolveDraggedOrders(input: {
   readonly threadByKey: ReadonlyMap<string, EnvironmentThreadShell>;
   readonly settledThreads: readonly EnvironmentThreadShell[];
   readonly activeThreads: readonly EnvironmentThreadShell[];
-  readonly workingShelfEnabled: boolean;
+  readonly activeTimeOrdered: boolean;
 }): typeof NO_DRAGGED_ORDERS {
-  const { drag, threadByKey, settledThreads, activeThreads, workingShelfEnabled } = input;
+  const { drag, threadByKey, settledThreads, activeThreads, activeTimeOrdered } = input;
   const thread = threadByKey.get(drag.activeKey);
   if (thread === undefined) return NO_DRAGGED_ORDERS;
   const others = (list: readonly EnvironmentThreadShell[]) =>
@@ -378,7 +386,7 @@ function resolveDraggedOrders(input: {
       ...others(settledThreads),
       applySidebarThreadDrop(thread, "settled", drag.occurredAt),
     ]).map(threadShellKey),
-    activeOrder: workingShelfEnabled
+    activeOrder: activeTimeOrdered
       ? sortInboxThreadsByReturn(
           [...others(activeThreads), applySidebarThreadDrop(thread, "active", drag.occurredAt)],
           inboxReturns.returnedAt,
@@ -423,9 +431,23 @@ function useSidebarThreads(input: {
     folderGroups,
     keepEmptyFolders: keepEmpty,
   } = input;
-  // Folders already separate the work, so boring mode has no Working shelf.
+  // Folders already separate the work, so boring mode has no Working shelf or Needs you.
   const workingShelfEnabled =
     useClientSettings((s) => s.sidebarWorkingShelfEnabled) && folderGroups === null;
+  const inboxSectionsEnabled =
+    useClientSettings((s) => s.sidebarInboxSectionsEnabled) && folderGroups === null;
+  // Reading a thread marks it seen; keep its row in place until the user moves on.
+  const [openedRow, setOpenedRow] = useState<SidebarOpenedRow>({ key: null, needsYou: false });
+  if (openedRow.key !== routeRowThreadKey) {
+    const routeThread =
+      routeRowThreadKey === null
+        ? undefined
+        : threads.find((thread) => threadShellKey(thread) === routeRowThreadKey);
+    setOpenedRow({
+      key: routeRowThreadKey,
+      needsYou: routeThread !== undefined && threadNeedsYou(routeThread),
+    });
+  }
   const inboxReturnsVersion = useSyncExternalStore(
     inboxReturns.subscribe,
     inboxReturns.getSnapshot,
@@ -470,6 +492,8 @@ function useSidebarThreads(input: {
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend: folderGroups !== null,
+    inboxSectionsEnabled,
+    openedRow,
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
@@ -549,7 +573,8 @@ function useSidebarThreads(input: {
   return {
     ...partition,
     threads,
-    workingShelfEnabled,
+    // Inbox sections order the inbox by time too, so manual reordering stays off.
+    activeTimeOrdered: workingShelfEnabled || inboxSectionsEnabled,
     searchableThreads: [
       ...pinnedThreads,
       ...activeThreads,
@@ -605,6 +630,8 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend,
+    inboxSectionsEnabled,
+    openedRow,
   } = input;
   const preciseNow = new Date().toISOString();
   const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys, delegatedUnderParent);
@@ -664,9 +691,22 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const sortedPinned = sortPinnedThreadsForSidebar(pinned);
   const sortedActive = sortActiveBySend
     ? sortWorkingThreadsBySend(active)
-    : workingShelfEnabled
+    : workingShelfEnabled || inboxSectionsEnabled
       ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
       : sortThreadsForSidebar(active);
+  const orderedActive =
+    optimisticDrop?.section !== "active" || optimisticDrop.order === null
+      ? sortedActive
+      : orderItemsByPreferredIds({
+          items: sortedActive,
+          preferredIds: optimisticDrop.order,
+          getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+        });
+  const inboxSections = inboxSectionsEnabled
+    ? splitInboxThreads(orderedActive, (thread) =>
+        threadShellKey(thread) === openedRow.key ? openedRow.needsYou : undefined,
+      )
+    : null;
   return {
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
@@ -679,13 +719,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     draggableThreadKeys,
     activeReorderableThreadKeys,
     activeThreads:
-      optimisticDrop?.section !== "active" || optimisticDrop.order === null
-        ? sortedActive
-        : orderItemsByPreferredIds({
-            items: sortedActive,
-            preferredIds: optimisticDrop.order,
-            getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-          }),
+      inboxSections === null ? orderedActive : [...inboxSections.needsYou, ...inboxSections.open],
+    /** Leads `activeThreads` when inbox sections are on; null when they are off. */
+    needsYouCount: inboxSections?.needsYou.length ?? null,
     workingThreads: sortWorkingThreadsBySend(working),
     snoozedThreads: snoozed.toSorted(
       (left, right) =>
@@ -1242,11 +1278,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
 
   const {
-    workingShelfEnabled,
+    activeTimeOrdered,
     pinnedThreads,
     draggableThreadKeys,
     activeReorderableThreadKeys,
     activeThreads,
+    needsYouCount,
     workingThreads,
     snoozedThreads,
     settledThreads,
@@ -1880,7 +1917,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     items.push({ kind: "marker", marker: "pinned-divider" });
     const activeRows = rowsOf(activeThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
-    items.push(...activeRows);
+    if (needsYouCount === null) {
+      items.push(...activeRows);
+    } else {
+      if (needsYouCount > 0) {
+        items.push({ kind: "marker", marker: "needs-you-header" });
+        items.push(...activeRows.slice(0, needsYouCount));
+      }
+      if (activeRows.length > needsYouCount) {
+        items.push({ kind: "marker", marker: "open-header" });
+        items.push(...activeRows.slice(needsYouCount));
+      }
+    }
     if (workingThreads.length > 0) {
       items.push({ kind: "marker", marker: "working-header" });
       items.push(...rowsOf(visibleWorkingThreads, "working"));
@@ -1954,7 +2002,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           threadByKey,
           settledThreads,
           activeThreads,
-          workingShelfEnabled,
+          activeTimeOrdered,
         });
   const sidebarSortingStrategy = createSidebarSortingStrategy({
     items: sidebarListItems,
@@ -1993,7 +2041,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             activeOrder: activeKeys,
             activeKeysById,
             activeReorderableKeys: activeReorderableThreadKeys,
-            activeTimeOrdered: workingShelfEnabled,
+            activeTimeOrdered,
           }).kind !== "none"
         );
       },
@@ -2026,7 +2074,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       activeOrder: activeKeys,
       activeKeysById,
       activeReorderableKeys: activeReorderableThreadKeys,
-      activeTimeOrdered: workingShelfEnabled,
+      activeTimeOrdered,
     });
     if (plan.kind === "none") return;
     if (plan.kind === "settle" && settlingThreadKeysRef.current.has(activeKey)) return;
@@ -3391,6 +3439,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                       dragTargetSection !== "active"))
                                 }
                                 isDropTarget={dragTargetSection === "active"}
+                              />,
+                            );
+                            break;
+                          case "needs-you-header":
+                          case "open-header":
+                            items.push(
+                              <SidebarInboxLabel
+                                key={item.marker}
+                                marker={item.marker}
+                                count={
+                                  item.marker === "needs-you-header"
+                                    ? (needsYouCount ?? 0)
+                                    : activeThreads.length - (needsYouCount ?? 0)
+                                }
                               />,
                             );
                             break;

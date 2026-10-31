@@ -186,6 +186,8 @@ export type SidebarListMarker =
   | "active-placeholder"
   | "settled-placeholder"
   | "pinned-divider"
+  | "needs-you-header"
+  | "open-header"
   | "working-header"
   | "snoozed-header"
   | "settled-header";

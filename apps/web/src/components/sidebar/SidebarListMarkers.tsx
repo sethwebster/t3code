@@ -107,6 +107,31 @@ export function SidebarDragBoundary(props: {
   );
 }
 
+/** Labels a group inside the inbox; drops ignore it and treat the inbox as one section. */
+export function SidebarInboxLabel(props: {
+  marker: "needs-you-header" | "open-header";
+  count: number;
+}) {
+  const needsYou = props.marker === "needs-you-header";
+  return (
+    <SortableSidebarMarker
+      marker={props.marker}
+      data-testid={`sidebar-${props.marker}`}
+      className="mx-0.5"
+    >
+      <div
+        className={cn(
+          "flex h-7 items-center gap-2 px-2 text-xs font-medium",
+          needsYou ? "text-sidebar-foreground/80" : "text-sidebar-muted-foreground",
+        )}
+      >
+        <span className="flex-1">{needsYou ? "Needs you" : "Open"}</span>
+        <span className="font-normal tabular-nums">{props.count}</span>
+      </div>
+    </SortableSidebarMarker>
+  );
+}
+
 export function SidebarSectionHeader(props: {
   marker: "working-header" | "snoozed-header" | "settled-header";
   label: string;

@@ -30,6 +30,51 @@ export function isThreadWorking(thread: WorkingThreadInput): boolean {
   return !(thread.interactionMode === "plan" && thread.hasActionableProposedPlan && runSettled);
 }
 
+type NeedsYouInput = WorkingThreadInput &
+  Pick<EnvironmentThreadShell, "lastVisitedAt" | "pendingGuestMessageCount">;
+
+/**
+ * Whether a thread that is not working waits on the user: a request it is blocked on,
+ * a ready plan, or a finish the user has not opened since. Never-opened threads count
+ * as unseen; servers without visit tracking (`undefined`) never report unseen.
+ */
+export function threadNeedsYou(thread: NeedsYouInput): boolean {
+  if (
+    thread.hasPendingApprovals ||
+    thread.hasPendingUserInput ||
+    thread.pendingSubagentRequest != null ||
+    (thread.pendingGuestMessageCount ?? 0) > 0
+  ) {
+    return true;
+  }
+  const run = thread.latestRun;
+  if (run === null || run.completedAt === null || thread.runtime?.activeRunId === run.runId) {
+    return false;
+  }
+  if (thread.interactionMode === "plan" && thread.hasActionableProposedPlan) return true;
+  if (thread.lastVisitedAt === undefined) return false;
+  if (thread.lastVisitedAt === null) return true;
+  const completedAt = Date.parse(run.completedAt);
+  const visitedAt = Date.parse(thread.lastVisitedAt);
+  return Number.isNaN(visitedAt) || (!Number.isNaN(completedAt) && completedAt > visitedAt);
+}
+
+/**
+ * Keeps each group's order. `frozen` pins a row's group while the user reads it, so
+ * opening or watching a thread never moves the row under them.
+ */
+export function splitInboxThreads<T extends NeedsYouInput>(
+  threads: readonly T[],
+  frozen?: (thread: T) => boolean | undefined,
+): { readonly needsYou: T[]; readonly open: T[] } {
+  const needsYou: T[] = [];
+  const open: T[] = [];
+  for (const thread of threads) {
+    ((frozen?.(thread) ?? threadNeedsYou(thread)) ? needsYou : open).push(thread);
+  }
+  return { needsYou, open };
+}
+
 type InboxThreadInput = Pick<
   EnvironmentThreadShell,
   "id" | "environmentId" | "createdAt" | "unsettledAt" | "latestRun"

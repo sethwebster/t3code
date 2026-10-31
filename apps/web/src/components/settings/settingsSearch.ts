@@ -456,6 +456,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta boring sidebar folder rows multiline branch pull request details"],
   },
   {
+    id: "needs-you-section",
+    title: "Needs you section",
+    to: "/settings/labs",
+    searchTerms: ["labs beta inbox attention unread unseen waiting approval triage open sidebar"],
+  },
+  {
     id: "guest-links",
     title: "Guest links",
     to: "/settings/labs",

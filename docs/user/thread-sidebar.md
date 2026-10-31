@@ -155,6 +155,19 @@ right-click it, to start a thread in that project. Pinned threads stay above the
 Snoozed and Settled stay below them. In this mode you cannot drag threads, and the Working section
 is off. Each device keeps its own choice.
 
+### Split what needs you (beta)
+
+Turn on **Settings → Labs → Needs you section** on web and desktop, or **Settings → General →
+Needs you section** on iOS and Android, to split the active list in two. **Needs you** holds
+threads waiting on an approval, an answer, a guest message, or a ready plan, and threads that
+finished or failed since you last opened them. **Open** holds the threads you have already seen.
+Both are newest first, and a thread's status color still shows why it needs you.
+
+Opening a thread marks it seen. On web and desktop its row stays where it was until you open
+another thread, and **Mark unread** sends a thread back to Needs you. Like the Working section,
+this orders the active list by time, so you cannot drag or move threads within it. The boring
+sidebar has no Needs you section.
+
 ## Settle finished work
 
 Choose **Settle thread** from its menu to move finished work out of the active list

@@ -21,6 +21,7 @@ import {
   isThreadWorking,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
+  splitInboxThreads,
 } from "@t3tools/client-runtime/state/thread-inbox";
 import {
   sortActiveThreadsByOrderKey,
@@ -307,6 +308,9 @@ export interface ThreadListV2Layout {
   readonly hiddenSettledCount: number;
   /** The settled rows the shelf may list, before its visible limit. */
   readonly listedSettledThreads: ReadonlyArray<EnvironmentThreadShell>;
+  /** Where the inbox groups start in `items`; null while inbox sections are off or empty. */
+  readonly needsYouHeaderIndex: number | null;
+  readonly openHeaderIndex: number | null;
   readonly workingCount: number;
   readonly workingShelfHeaderIndex: number | null;
   readonly snoozedCount: number;
@@ -349,6 +353,12 @@ export interface ThreadListV2WorkingShelfListItem {
   readonly disabled: boolean;
 }
 
+export interface ThreadListV2InboxLabelListItem {
+  readonly type: "v2-inbox-label";
+  readonly key: "v2-needs-you" | "v2-open";
+  readonly count: number;
+}
+
 export interface ThreadListV2SnoozedShelfListItem {
   readonly type: "v2-snoozed-shelf";
   readonly key: "v2-snoozed-shelf";
@@ -369,6 +379,7 @@ export interface ThreadListV2SettledShelfListItem {
 export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
+  | ThreadListV2InboxLabelListItem
   | ThreadListV2WorkingShelfListItem
   | ThreadListV2SnoozedShelfListItem
   | ThreadListV2SettledShelfListItem;
@@ -379,6 +390,7 @@ export function isThreadListV2ListItem(value: {
   return (
     value.type === "v2-thread" ||
     value.type === "v2-pending" ||
+    value.type === "v2-inbox-label" ||
     value.type === "v2-working-shelf" ||
     value.type === "v2-snoozed-shelf" ||
     value.type === "v2-settled-shelf"
@@ -415,6 +427,12 @@ export function threadListV2ListItemsAreEqual(
         previous.pendingTask === item.pendingTask &&
         previous.showPendingDivider === item.showPendingDivider &&
         previous.showTrailingDivider === item.showTrailingDivider
+      );
+    case "v2-inbox-label":
+      return (
+        previous.type === "v2-inbox-label" &&
+        previous.key === item.key &&
+        previous.count === item.count
       );
     case "v2-working-shelf":
       return (
@@ -463,6 +481,8 @@ function resolveThreadListV2ItemTimeLabel(
 export function buildThreadListV2ListItems(input: {
   readonly items: ReadonlyArray<ThreadListV2Item>;
   readonly pendingTasks: ReadonlyArray<PendingNewTask>;
+  readonly needsYouHeaderIndex?: number | null;
+  readonly openHeaderIndex?: number | null;
   readonly workingCount?: number;
   readonly workingShelfExpanded?: boolean;
   readonly workingShelfHeaderIndex?: number | null;
@@ -526,7 +546,25 @@ export function buildThreadListV2ListItems(input: {
   const snoozedEnd = settledShelfHeaderIndex ?? threadItems.length;
   const workingEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
   const activeEnd = workingShelfHeaderIndex ?? workingEnd;
-  const result: ThreadListV2ListItem[] = [...pendingItems, ...threadItems.slice(0, activeEnd)];
+  const needsYouStart = input.needsYouHeaderIndex ?? null;
+  const openStart = input.openHeaderIndex ?? null;
+  const result: ThreadListV2ListItem[] = [
+    ...pendingItems,
+    ...threadItems.slice(0, needsYouStart ?? openStart ?? activeEnd),
+  ];
+  if (needsYouStart !== null) {
+    const needsYouEnd = openStart ?? activeEnd;
+    result.push({
+      type: "v2-inbox-label",
+      key: "v2-needs-you",
+      count: needsYouEnd - needsYouStart,
+    });
+    result.push(...threadItems.slice(needsYouStart, needsYouEnd));
+  }
+  if (openStart !== null) {
+    result.push({ type: "v2-inbox-label", key: "v2-open", count: activeEnd - openStart });
+    result.push(...threadItems.slice(openStart, activeEnd));
+  }
   const shelfDisabled = input.shelfPreferencesLoading === true;
   if (workingShelfHeaderIndex !== null && workingCount > 0) {
     result.push({
@@ -607,6 +645,7 @@ export function buildThreadListV2Items(input: {
   readonly now: string;
   readonly workingShelfEnabled?: boolean;
   readonly workingShelfExpanded?: boolean;
+  readonly inboxSectionsEnabled?: boolean;
   readonly isWorking?: (thread: EnvironmentThreadShell) => boolean;
   readonly inboxReturnAt?: (thread: EnvironmentThreadShell) => number | undefined;
   readonly snoozedShelfExpanded?: boolean;
@@ -730,6 +769,8 @@ export function buildThreadListV2Items(input: {
       })),
       hiddenSettledCount: 0,
       listedSettledThreads: [],
+      needsYouHeaderIndex: null,
+      openHeaderIndex: null,
       workingCount: 0,
       workingShelfHeaderIndex: null,
       snoozedCount: 0,
@@ -741,9 +782,12 @@ export function buildThreadListV2Items(input: {
     };
   }
 
-  const orderedActive = workingShelfEnabled
-    ? sortInboxThreadsByReturn(active, input.inboxReturnAt)
-    : applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending);
+  const orderedActive =
+    workingShelfEnabled || input.inboxSectionsEnabled === true
+      ? sortInboxThreadsByReturn(active, input.inboxReturnAt)
+      : applyPendingThreadOrder(sortThreadsForListV2(active), "active", pending);
+  const inboxSections =
+    input.inboxSectionsEnabled === true ? splitInboxThreads(orderedActive) : null;
   const orderedWorking = sortWorkingThreadsBySend(working);
   const orderedSnoozed = [...snoozed].sort(
     (left, right) =>
@@ -802,7 +846,16 @@ export function buildThreadListV2Items(input: {
       isLast: false,
     });
   }
-  for (const thread of orderedActive) {
+  const activeStartIndex = items.length;
+  const needsYouHeaderIndex =
+    inboxSections !== null && inboxSections.needsYou.length > 0 ? activeStartIndex : null;
+  const openHeaderIndex =
+    inboxSections !== null && inboxSections.open.length > 0
+      ? activeStartIndex + inboxSections.needsYou.length
+      : null;
+  for (const thread of inboxSections === null
+    ? orderedActive
+    : [...inboxSections.needsYou, ...inboxSections.open]) {
     items.push({
       thread,
       variant: "card",
@@ -853,6 +906,8 @@ export function buildThreadListV2Items(input: {
     items,
     hiddenSettledCount: Math.max(0, settledTotal - pagedSettled.length),
     listedSettledThreads: listedSettled,
+    needsYouHeaderIndex,
+    openHeaderIndex,
     workingCount: orderedWorking.length,
     workingShelfHeaderIndex,
     snoozedCount: orderedSnoozed.length,

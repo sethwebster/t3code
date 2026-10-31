@@ -12,6 +12,7 @@ export function useThreadListV2ShelfPreferences() {
   const settledShelfExpanded =
     loaded && preferencesResult.value.threadListSettledShelfExpanded === true;
   const workingShelfEnabled = loaded && preferencesResult.value.workingShelfEnabled !== false;
+  const inboxSectionsEnabled = loaded && preferencesResult.value.inboxSectionsEnabled === true;
   const workingShelfExpanded =
     loaded && preferencesResult.value.threadListWorkingShelfExpanded === true;
 
@@ -46,6 +47,9 @@ export function useThreadListV2ShelfPreferences() {
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,
+    inboxSectionsEnabled,
+    /** Either beta orders active threads by time, so they cannot be moved by hand. */
+    activeTimeOrdered: workingShelfEnabled || inboxSectionsEnabled,
     workingShelfExpanded,
     toggleSettledShelf,
     toggleSnoozedShelf,

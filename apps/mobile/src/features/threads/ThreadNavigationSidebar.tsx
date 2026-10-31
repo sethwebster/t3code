@@ -67,6 +67,7 @@ import { SidebarNavigationShell } from "./sidebar-navigation-shell";
 import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
+  ThreadListV2SectionDivider,
   ThreadListV2SettledShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
@@ -275,6 +276,8 @@ function ThreadNavigationSidebarPane(
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,
+    inboxSectionsEnabled,
+    activeTimeOrdered,
     workingShelfExpanded,
     toggleSettledShelf,
     toggleSnoozedShelf,
@@ -318,6 +321,7 @@ function ThreadNavigationSidebarPane(
     pendingOrder,
     shelfPreferencesLoaded,
     workingShelfEnabled,
+    inboxSectionsEnabled,
     workingShelfExpanded,
     snoozedShelfExpanded,
     settledShelfExpanded,
@@ -474,7 +478,7 @@ function ThreadNavigationSidebarPane(
     savedConnectionsById,
     listEnvironments,
     threadSearchMatchByKey,
-    workingShelfEnabled,
+    activeTimeOrdered,
   };
   useThreadJumpShortcuts(listItems, handleSelectThread);
   const sidebarItemsAreEqual = (previous: SidebarListItem, item: SidebarListItem): boolean => {
@@ -601,7 +605,7 @@ function ThreadNavigationSidebarPane(
             reorderSupported={
               item.item.pinned
                 ? pinReorderEnvironmentIds.has(thread.environmentId)
-                : !workingShelfEnabled && activeReorderEnvironmentIds.has(thread.environmentId)
+                : !activeTimeOrdered && activeReorderEnvironmentIds.has(thread.environmentId)
             }
             canMoveUp={item.canMoveUp}
             canMoveDown={item.canMoveDown}
@@ -618,6 +622,13 @@ function ThreadNavigationSidebarPane(
           />
         );
       }
+      case "v2-inbox-label":
+        return (
+          <ThreadListV2SectionDivider
+            label={`${item.key === "v2-needs-you" ? "Needs you" : "Open"} (${item.count})`}
+            pane="sidebar"
+          />
+        );
       case "v2-working-shelf":
         return (
           <ThreadListV2WorkingShelfHeader

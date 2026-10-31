@@ -1719,3 +1719,67 @@ describe("Working section beta", () => {
     ]);
   });
 });
+
+describe("Needs you section beta", () => {
+  const finished = (id: string, completedAt: string, lastVisitedAt: string | null) =>
+    makeThread({
+      id: ThreadId.make(id),
+      title: id,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      lastVisitedAt,
+      latestRun: {
+        runId: RunId.make(`run-${id}`),
+        status: "completed",
+        requestedAt: "2026-06-01T00:00:00.000Z",
+        startedAt: "2026-06-01T00:00:00.000Z",
+        completedAt,
+        assistantMessageId: null,
+      },
+    });
+  const threads = [
+    finished("seen", "2026-06-01T04:00:00.000Z", "2026-06-01T05:00:00.000Z"),
+    finished("unread", "2026-06-01T01:00:00.000Z", "2026-06-01T00:30:00.000Z"),
+    {
+      ...finished("asks", "2026-06-01T03:00:00.000Z", "2026-06-01T05:00:00.000Z"),
+      hasPendingUserInput: true,
+    },
+  ];
+
+  it("leads with threads that need the user, newest first, under labelled groups", () => {
+    const layout = buildThreadListV2Items({
+      threads,
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      inboxSectionsEnabled: true,
+    });
+    expect(layout.items.map((item) => item.thread.id)).toEqual(["asks", "unread", "seen"]);
+    const listItems = buildThreadListV2ListItems({
+      items: layout.items,
+      pendingTasks: [],
+      needsYouHeaderIndex: layout.needsYouHeaderIndex,
+      openHeaderIndex: layout.openHeaderIndex,
+    });
+    expect(
+      listItems.map((item) =>
+        item.type === "v2-thread"
+          ? item.item.thread.id
+          : item.type === "v2-inbox-label"
+            ? `${item.key}:${item.count}`
+            : item.type,
+      ),
+    ).toEqual(["v2-needs-you:2", "asks", "unread", "v2-open:1", "seen"]);
+  });
+
+  it("drops the empty group's label", () => {
+    const layout = buildThreadListV2Items({
+      threads: [threads[0]!],
+      environmentId: null,
+      searchQuery: "",
+      now: NOW,
+      inboxSectionsEnabled: true,
+    });
+    expect(layout.needsYouHeaderIndex).toBeNull();
+    expect(layout.openHeaderIndex).toBe(0);
+  });
+});

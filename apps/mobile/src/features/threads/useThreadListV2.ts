@@ -50,6 +50,7 @@ export function useThreadListV2(input: {
   readonly pendingOrder: LayoutInput["pendingOrder"];
   readonly shelfPreferencesLoaded: boolean;
   readonly workingShelfEnabled: boolean;
+  readonly inboxSectionsEnabled: boolean;
   readonly workingShelfExpanded: boolean;
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
@@ -88,7 +89,7 @@ export function useThreadListV2(input: {
     });
   const moveAvailability = new Map([
     ...sectionAvailability("pinned"),
-    ...(workingShelfEnabled ? [] : sectionAvailability("active")),
+    ...(workingShelfEnabled || input.inboxSectionsEnabled ? [] : sectionAvailability("active")),
   ]);
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const scopes = olderSettledScopes(input);
@@ -112,6 +113,7 @@ export function useThreadListV2(input: {
     now: input.now,
     workingShelfEnabled,
     workingShelfExpanded: input.workingShelfExpanded,
+    inboxSectionsEnabled: input.inboxSectionsEnabled,
     inboxReturnAt: inbox.returnedAt,
     isWorking: inbox.isWorking,
     snoozedShelfExpanded: input.snoozedShelfExpanded,
@@ -149,6 +151,8 @@ export function useThreadListV2(input: {
   const items = buildThreadListV2ListItems({
     items: layout.items,
     pendingTasks,
+    needsYouHeaderIndex: layout.needsYouHeaderIndex,
+    openHeaderIndex: layout.openHeaderIndex,
     workingCount: layout.workingCount,
     workingShelfExpanded: input.workingShelfExpanded,
     workingShelfHeaderIndex: layout.workingShelfHeaderIndex,

@@ -18,6 +18,7 @@ export function LabsSettingsPanel() {
       <SettingsSection id="beta" title="Beta">
         <BoringSidebarRow />
         <BoringSidebarMultilineRow />
+        <NeedsYouSectionRow />
         {/* Clerk is only mounted when this build has T3 Connect. */}
         {hasCloudPublicConfig() ? <GuestLinksRowWithSignIn /> : <GuestLinksRow />}
         <LinkedEnvironmentsRow />
@@ -63,6 +64,26 @@ function BoringSidebarMultilineRow() {
             updateSettings({ boringSidebarMultilineRows: Boolean(checked) })
           }
           aria-label="Two-line folder rows"
+        />
+      }
+    />
+  );
+}
+
+function NeedsYouSectionRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("needs-you-section")}
+      description="Split the inbox into Needs you (waiting on an answer or finished and unread) and Open (already seen). The boring sidebar has no Needs you section."
+      control={
+        <Switch
+          checked={settings.sidebarInboxSectionsEnabled}
+          onCheckedChange={(checked) =>
+            updateSettings({ sidebarInboxSectionsEnabled: Boolean(checked) })
+          }
+          aria-label="Needs you section"
         />
       }
     />
